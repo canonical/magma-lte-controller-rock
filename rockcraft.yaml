@@ -1,0 +1,99 @@
+name: magma-lte-controller
+summary: Magma Orchestrator Controller
+description: |
+  Magma's Orchestrator is a centralized controller for a set of networks. Orchestrator handles the 
+  control plane for various types of gateways in Magma.
+version: "1.6.1"
+license: Apache-2.0
+base: ubuntu:22.04
+platforms:
+  amd64:
+
+cmd: ["lte", "-run_echo_server=true", "-logtostderr=true", "-v=0"]
+
+env:
+  - DATABASE_SOURCE: f"dbname=magma user=username password=password host=127.0.0.1 sslmode=disable"
+  - SQL_DRIVER: postgres
+  - SQL_DIALECT: psql
+  - SERVICE_HOSTNAME: magma-orc8r-orchestrator
+  - SERVICE_REGISTRY_MODE": k8s
+  - SERVICE_REGISTRY_NAMESPACE": namespace
+
+parts:
+
+  lte:
+    plugin: go
+    source: https://github.com/magma/magma/
+    source-type: git
+    source-tag: v1.6.1
+    source-subdir: lte/cloud/go
+    build-snaps:
+      - go
+
+  lte-configs:
+    plugin: dump
+    source: https://github.com/magma/magma/
+    source-type: git
+    source-tag: v1.6.1
+    source-subdir: lte/cloud/
+    organize:
+      configs: etc/magma/configs/lte/
+    stage:
+      - etc/magma/configs/lte/
+
+  orc8r-configs:
+    plugin: dump
+    source: https://github.com/magma/magma/
+    source-type: git
+    source-tag: v1.6.1
+    source-subdir: orc8r/cloud
+    organize:
+      configs: etc/magma/configs/orc8r/
+    stage:
+      - etc/magma/configs/orc8r/
+
+  swagger-ui:
+    plugin: dump
+    source: https://github.com/swagger-api/swagger-ui/archive/v3.52.2.zip
+    source-type: zip
+    organize:
+      swagger-ui-3.52.2/dist/: var/opt/magma/static/swagger-ui/dist/
+    stage:
+      - var/opt/magma/static/swagger-ui/
+
+  swagger:
+    plugin: nil
+    after:
+      - orchestrator
+    source: https://github.com/magma/magma/
+    source-type: git
+    source-tag: v1.6.1
+    build-packages:
+      - apt-transport-https
+      - gnupg
+      - curl
+      - debian-keyring
+      - debian-archive-keyring
+    build-snaps:
+      - go
+    build-environment:
+      - MAGMA_ROOT: $CRAFT_PART_SRC
+      - MAGMA_MODULES: $MAGMA_ROOT/orc8r
+    override-build: |
+      set -x
+      mkdir -p $CRAFT_PART_INSTALL/etc/magma/swagger/ $CRAFT_PART_INSTALL/var/opt/magma/static/swagger/v1/ui/ $CRAFT_PART_INSTALL/var/opt/magma/static/swagger/v1/static/ $CRAFT_PART_INSTALL/var/opt/magma/static/swagger/v1/spec/
+      rm -rf /usr/share/keyrings/go-swagger-go-swagger-archive-keyring.gpg
+      rm -rf /etc/apt/sources.list.d/go-swagger-go-swagger.list
+      curl -1sLf 'https://dl.cloudsmith.io/public/go-swagger/go-swagger/gpg.2F8CB673971B5C9E.key' | gpg --dearmor -o /usr/share/keyrings/go-swagger-go-swagger-archive-keyring.gpg
+      curl -1sLf 'https://dl.cloudsmith.io/public/go-swagger/go-swagger/config.deb.txt?distro=debian&codename=any-version' > /etc/apt/sources.list.d/go-swagger-go-swagger.list
+
+      apt update
+      apt install swagger
+
+      cd orc8r/cloud
+      make swagger
+
+      cp -r $CRAFT_PART_SRC/orc8r/cloud/swagger/ $CRAFT_PART_INSTALL/etc/magma/
+      cp $CRAFT_PART_SRC/orc8r/cloud/go/obsidian/swagger/v1/index.html $CRAFT_PART_INSTALL/var/opt/magma/static/swagger/v1/ui/index.html
+      cp $CRAFT_PART_SRC/orc8r/cloud/go/obsidian/swagger/v1/css/sidebar.css $CRAFT_PART_INSTALL/var/opt/magma/static/swagger/v1/static/sidebar.css
+      cp $CRAFT_PART_SRC/orc8r/cloud/go/obsidian/swagger/v1/swagger.yml $CRAFT_PART_INSTALL/var/opt/magma/static/swagger/v1/spec/swagger.yml
