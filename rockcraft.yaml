@@ -89,7 +89,10 @@ parts:
 
       apt update
       apt install swagger
+      
+      make -C /root/parts/swagger/src/orc8r/cloud/go swagger_tools copy_swagger_files
 
+      export PATH=$PATH:/root/go/bin/
       cd orc8r/cloud
       make swagger
 
