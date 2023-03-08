@@ -52,15 +52,6 @@ parts:
     stage:
       - etc/magma/configs/orc8r/
 
-  swagger-ui:
-    plugin: dump
-    source: https://github.com/swagger-api/swagger-ui/archive/v3.52.2.zip
-    source-type: zip
-    organize:
-      swagger-ui-3.52.2/dist/: var/opt/magma/static/swagger-ui/dist/
-    stage:
-      - var/opt/magma/static/swagger-ui/
-
   swagger:
     plugin: nil
     after:
