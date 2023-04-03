@@ -1,6 +1,6 @@
 # Magma LTE Controller Rock
 
-Rock for Magma's Orchestrator LTE controller service built using [rockcraft](https://github.com/canonical/rockcraft). 
+Rock for Magma's Orchestrator LTE controller built using [rockcraft](https://github.com/canonical/rockcraft).
 
 ## Usage
 
