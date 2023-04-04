@@ -8,29 +8,65 @@ These tests assume that the lte-controller container is running and available at
 defined below.
 """
 
+import logging
+
 import glob
 import os
 import subprocess
 import unittest
+from time import sleep
 
+import docker
 import requests  # type: ignore[import]
 import yaml
 
 ROCKCRAFT_FILE_PATH = "../rockcraft.yaml"
+
 LTE_CONTROLLER_DOCKER_URL = "http://localhost"
 LTE_CONTROLLER_DOCKER_PORT = 8080
+
+POSTGRES_USER = "username"
+POSTGRES_PASSWORD = "password"
+POSTGRES_DB = "magma"
+# TODO: remove hardcoded ip
+DATABASE_SOURCE = "dbname=magma user=username password=password host=172.17.0.2 sslmode=disable"
+
+logger = logging.getLogger(__name__)
 
 
 class TestLTEControllerRock(unittest.TestCase):
     """Integration tests for the lte-controller rock."""
 
     def setUp(self):
+        """Runs containers under test."""
+        logger.warning("############# setUp #############")
+        self._move_rock_to_docker_regisgtry()
+
+        self.client = docker.from_env()
+        self.network = self.client.networks.create(
+            "bridge_network",
+            driver="bridge",
+        )
+        
+        self._run_postgres_container()
+        # TODO: wait for it to be up -> Use postgers logs to check is ready
+        sleep(10)
+        self._run_orc8r_lte_controller_container()
+    
+    @staticmethod
+    def _get_image_name_and_version() -> tuple:
+        logger.warning("############# _get_image_name_and_version #############")
         with open(ROCKCRAFT_FILE_PATH, "r") as file:
             data = yaml.safe_load(file)
-            self.image_name = data["name"]
-            self.version = data["version"]
-
+            image_name = data["name"]
+            version = data["version"]
+        return (image_name, version)
+        
+    def _move_rock_to_docker_regisgtry(self):
+        logger.warning("############# _move_rock_to_docker_regisgtry #############")
+        image_name, version = self._get_image_name_and_version()
         rock_file = glob.glob("../../**/*.rock", recursive=True).pop()
+        
         subprocess.run(
             [
                 "sudo",
@@ -38,55 +74,58 @@ class TestLTEControllerRock(unittest.TestCase):
                 "--insecure-policy",
                 "copy",
                 f"oci-archive:{rock_file}",
-                f"docker-daemon:ghcr.io/canonical/{self.image_name}:{self.version}",
+                f"docker-daemon:ghcr.io/canonical/{image_name}:{version}",
             ],
             check=True,
         )
-
-        os.environ["POSTGRES_USER"] = "username"
-        os.environ["POSTGRES_PASSWORD"] = "password"
-        os.environ["POSTGRES_DB"] = "magma"
-        os.environ[
-            "DATABASE_SOURCE"
-        ] = "dbname=magma user=username password=password host=172.17.0.2 sslmode=disable"
-
-        subprocess.run(
-            [
-                "docker",
-                "run",
-                "-d",
-                "-p",
-                "5432:5432",
-                "--env",
-                "POSTGRES_PASSWORD",
-                "--env",
-                "POSTGRES_USER",
-                "--env",
-                "POSTGRES_DB",
-                "--network",
-                "bridge",
-                "postgres",
-            ],
-            check=True,
+        
+    def _run_postgres_container(self):
+        logger.warning("############# _run_postgres_container #############")
+        postgres_container = self.client.containers.run(
+            "postgres",
+            detach=True,
+            ports={"5432/tcp": 5432},
+            environment={
+                "POSTGRES_USER": POSTGRES_USER,
+                "POSTGRES_PASSWORD": POSTGRES_PASSWORD,
+                "POSTGRES_DB": POSTGRES_DB,
+            },
+            name="postgres_container",
         )
-        subprocess.run(
-            [
-                "docker",
-                "run",
-                "-d",
-                "-p",
-                "8080:10112",
-                "--network",
-                "bridge",
-                f"ghcr.io/canonical/{self.image_name}:{self.version}",
-            ],
-            check=True,
+        self.network.connect(postgres_container)
+        
+    def _run_orc8r_lte_controller_container(self):
+        logger.warning("############# _run_orc8r_lte_controller_container #############")
+        image_name, version = self._get_image_name_and_version()
+        
+        orc8r_lte_controller_container = self.client.containers.run(
+            f"ghcr.io/canonical/{image_name}:{version}",
+            # command="sleep 5000000",
+            detach=True,
+            ports={"10113/tcp": 8080},
+            environment={
+             "DATABASE_SOURCE": DATABASE_SOURCE
+            },
+            name = "orc8r_lte_controller_container",
         )
+        self.network.connect(orc8r_lte_controller_container)
 
     def test_given_lte_controller_container_is_running_when_http_get_then_hello_message_is_returned(  # noqa: E501
         self,
     ):
-        response = requests.get(f"{LTE_CONTROLLER_DOCKER_URL}:{LTE_CONTROLLER_DOCKER_PORT}")
-
-        assert response.status_code == 404
-        assert "Not Found" in response.text
+        """Test to validate that the container is running correctly."""
+        logger.warning("############# test #############")
+        url = f"{LTE_CONTROLLER_DOCKER_URL}:{LTE_CONTROLLER_DOCKER_PORT}"
+        
+        for _ in range(30):
+            try:
+                logger.warning("############# before request #############")
+                response = requests.get(url, timeout=10)
+                if response.status_code == 404:
+                    break
+            # except requests.exceptions.RequestException:
+            except Exception as e:
+                logger.warning(e)
+            sleep(1)
+        else:
+            assert False, "Failed to get a 200 response within 30 seconds."

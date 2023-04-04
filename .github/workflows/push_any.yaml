@@ -6,6 +6,12 @@ on:
       - "main"
 
 jobs:
+  lint-report:
+      uses: ./.github/workflows/lint-report.yaml
+
+  static-analysis:
+    uses: ./.github/workflows/static-analysis.yaml
+
   build:
     uses: ./.github/workflows/build.yaml
 
