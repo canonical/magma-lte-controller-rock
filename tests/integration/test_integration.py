@@ -11,10 +11,9 @@ defined below.
 import logging
 
 import glob
-import os
 import subprocess
 import unittest
-from time import sleep
+from time import sleep, time
 
 import docker
 import requests  # type: ignore[import]
@@ -31,14 +30,13 @@ POSTGRES_DB = "magma"
 
 logger = logging.getLogger(__name__)
 
-
 class TestLTEControllerRock(unittest.TestCase):
     """Integration tests for the lte-controller rock."""
 
     def setUp(self):
         """Runs containers under test."""
-        logger.warning("############# setUp #############")
-        self._move_rock_to_docker_regisgtry()
+
+        self._move_rock_to_docker_registry()
 
         self.client = docker.from_env()
         self.network = self.client.networks.create(
@@ -47,13 +45,20 @@ class TestLTEControllerRock(unittest.TestCase):
         )
         
         self._run_postgres_container()
-        # TODO: wait for it to be up -> Use postgers logs to check is ready
-        sleep(10)
-        self._run_orc8r_lte_controller_container()
+        
+        timeout = 15
+        start_time = time()
+        while (time() - start_time) < timeout:
+            if not self._postgres_ready():
+                sleep(1)
+            else:
+                self._run_orc8r_lte_controller_container()
+                return
+        raise TimeoutError("Postgres container is not ready after 15 seconds.")
     
     @staticmethod
     def _get_image_name_and_version() -> tuple:
-        logger.warning("############# _get_image_name_and_version #############")
+        """Fetches image name and version from rockcraft.yaml."""
         with open(ROCKCRAFT_FILE_PATH, "r") as file:
             data = yaml.safe_load(file)
             image_name = data["name"]
@@ -63,13 +68,18 @@ class TestLTEControllerRock(unittest.TestCase):
     @property
     def _host_ip(self) -> str:
         """Fetches postgres host IP address from docker container."""
-        logger.warning("############# _host_ip #############")
         container = self.client.containers.get('postgres_container')
         ip_address = list(container.attrs['NetworkSettings']['Networks'].values())[0]['IPAddress']
         return ip_address
+    
+    def _postgres_ready(self):
+        """Checks if postgres is ready to accept connections by checking the logs."""
+        container = self.client.containers.get('postgres_container')
+        logs = container.logs().decode('utf-8')
+
+        return "database system is ready to accept connections" in logs
         
-    def _move_rock_to_docker_regisgtry(self):
-        logger.warning("############# _move_rock_to_docker_regisgtry #############")
+    def _move_rock_to_docker_registry(self):
         image_name, version = self._get_image_name_and_version()
         rock_file = glob.glob("../../**/*.rock", recursive=True).pop()
         
@@ -86,7 +96,6 @@ class TestLTEControllerRock(unittest.TestCase):
         )
         
     def _run_postgres_container(self):
-        logger.warning("############# _run_postgres_container #############")
         postgres_container = self.client.containers.run(
             "postgres",
             detach=True,
@@ -101,13 +110,11 @@ class TestLTEControllerRock(unittest.TestCase):
         self.network.connect(postgres_container)
         
     def _run_orc8r_lte_controller_container(self):
-        logger.warning("############# _run_orc8r_lte_controller_container #############")
         image_name, version = self._get_image_name_and_version()
         database_source = f"dbname=magma user=username password=password host={self._host_ip} sslmode=disable"
         
         orc8r_lte_controller_container = self.client.containers.run(
             f"ghcr.io/canonical/{image_name}:{version}",
-            # command="sleep 5000000",
             detach=True,
             ports={"10113/tcp": 8080},
             environment={
@@ -121,18 +128,14 @@ class TestLTEControllerRock(unittest.TestCase):
         self,
     ):
         """Test to validate that the container is running correctly."""
-        logger.warning("############# test #############")
         url = f"{LTE_CONTROLLER_DOCKER_URL}:{LTE_CONTROLLER_DOCKER_PORT}"
-        
         for _ in range(30):
             try:
-                logger.warning("############# before request #############")
                 response = requests.get(url, timeout=10)
                 if response.status_code == 404:
                     break
-            # except requests.exceptions.RequestException:
             except Exception as e:
-                logger.warning(e)
+                logger.error(e)
             sleep(1)
         else:
-            assert False, "Failed to get a 200 response within 30 seconds."
+            assert False, "Failed to get a 404 response within 30 seconds."
