@@ -28,8 +28,6 @@ LTE_CONTROLLER_DOCKER_PORT = 8080
 POSTGRES_USER = "username"
 POSTGRES_PASSWORD = "password"
 POSTGRES_DB = "magma"
-# TODO: remove hardcoded ip
-DATABASE_SOURCE = "dbname=magma user=username password=password host=172.17.0.2 sslmode=disable"
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +59,14 @@ class TestLTEControllerRock(unittest.TestCase):
             image_name = data["name"]
             version = data["version"]
         return (image_name, version)
+    
+    @property
+    def _host_ip(self) -> str:
+        """Fetches postgres host IP address from docker container."""
+        logger.warning("############# _host_ip #############")
+        container = self.client.containers.get('postgres_container')
+        ip_address = list(container.attrs['NetworkSettings']['Networks'].values())[0]['IPAddress']
+        return ip_address
         
     def _move_rock_to_docker_regisgtry(self):
         logger.warning("############# _move_rock_to_docker_regisgtry #############")
@@ -97,6 +103,7 @@ class TestLTEControllerRock(unittest.TestCase):
     def _run_orc8r_lte_controller_container(self):
         logger.warning("############# _run_orc8r_lte_controller_container #############")
         image_name, version = self._get_image_name_and_version()
+        database_source = f"dbname=magma user=username password=password host={self._host_ip} sslmode=disable"
         
         orc8r_lte_controller_container = self.client.containers.run(
             f"ghcr.io/canonical/{image_name}:{version}",
@@ -104,7 +111,7 @@ class TestLTEControllerRock(unittest.TestCase):
             detach=True,
             ports={"10113/tcp": 8080},
             environment={
-             "DATABASE_SOURCE": DATABASE_SOURCE
+             "DATABASE_SOURCE": database_source
             },
             name = "orc8r_lte_controller_container",
         )
