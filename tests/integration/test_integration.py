@@ -64,10 +64,9 @@ class TestLTEControllerRock(unittest.TestCase):
             version = data["version"]
         return (image_name, version)
 
-    @property
-    def _host_ip(self) -> str:
+    def _get_container_ip(self, container_name: str) -> str:
         """Fetches postgres host IP address from docker container."""
-        container = self.client.containers.get("postgres_container")
+        container = self.client.containers.get(container_name)
         ip_address = list(container.attrs["NetworkSettings"]["Networks"].values())[0]["IPAddress"]
         return ip_address
 
@@ -110,8 +109,9 @@ class TestLTEControllerRock(unittest.TestCase):
 
     def _run_orc8r_lte_controller_container(self):
         image_name, version = self._get_image_name_and_version()
+        container_ip = self._get_container_ip("postgres_container")
         database_source = (
-            f"dbname=magma user=username password=password host={self._host_ip} sslmode=disable"
+            f"dbname=magma user=username password=password host={container_ip} sslmode=disable"
         )
 
         orc8r_lte_controller_container = self.client.containers.run(
