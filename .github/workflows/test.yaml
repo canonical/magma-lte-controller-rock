@@ -15,24 +15,9 @@ jobs:
         run: |
           sudo snap install --devmode --channel edge skopeo
 
-      - name: Install yq
-        run: |
-          sudo snap install yq
-
       - uses: actions/download-artifact@v3
         with:
           name: rock
-
-      - name: Import
-        run: |
-          image_name="$(yq '.name' rockcraft.yaml)"
-          version="$(yq '.version' rockcraft.yaml)"
-          rock_file=$(ls *.rock | tail -n 1)
-          sudo skopeo \
-            --insecure-policy \
-            copy \
-            oci-archive:"${rock_file}" \
-            docker-daemon:"ghcr.io/canonical/${image_name}:${version}"
 
       - name: Install tox
         run: |
@@ -40,7 +25,4 @@ jobs:
 
       - name: Tests
         run: |
-          image_name="$(yq '.name' rockcraft.yaml)"
-          version="$(yq '.version' rockcraft.yaml)"
-          docker run -d -p 8080:10112 ghcr.io/canonical/${image_name}:${version}
           cd tests && tox -e integration
