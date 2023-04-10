@@ -1,13 +1,12 @@
-name: Push (main)
+name: Push
 
 on:
   push:
-    branches:
-      - main
 
 jobs:
+
   lint-report:
-      uses: ./.github/workflows/lint-report.yaml
+    uses: ./.github/workflows/lint-report.yaml
 
   static-analysis:
     uses: ./.github/workflows/static-analysis.yaml
@@ -20,5 +19,6 @@ jobs:
     uses: ./.github/workflows/test.yaml
 
   publish:
+    if: github.ref_name == 'main'
     needs: test
     uses: ./.github/workflows/publish.yaml

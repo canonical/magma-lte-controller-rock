@@ -12,7 +12,7 @@ platforms:
 cmd: ["lte", "-run_echo_server=true", "-logtostderr=true", "-v=0"]
 
 env:
-  - DATABASE_SOURCE: "dbname=magma user=username password=password host=127.0.0.1 sslmode=disable"
+  - DATABASE_SOURCE: "dbname=magma user=username password=password host=127.0.0.1 port=5432 sslmode=disable"
   - SQL_DRIVER: postgres
   - SQL_DIALECT: psql
   - SERVICE_HOSTNAME: magma-orc8r-orchestrator
